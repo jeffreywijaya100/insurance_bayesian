@@ -1,1 +1,1 @@
-# insurance_bayesian
+# US Health Insurance Bayesian Data Analytics (Group Project)
