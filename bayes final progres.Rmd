@@ -1,0 +1,105 @@
+---
+title: "Untitled"
+author: "Jeffrey Wijaya"
+date: "2023-12-08"
+output: html_document
+---
+
+```{r}
+library(rjags)
+library(rlang)
+library(tidyverse)
+setwd("C:/Users/jeffr/Documents/semester 3/bayesian")
+df <- read.csv("insurance.csv")
+head(df)
+```
+#Data Preprocessing and encoding (change categorical data like sex,smoker,region into numerical)
+```{r}
+df$sex <- ifelse(df$sex == "male", 0, ifelse(df$sex == "female", 1, df$sex))
+df$sex <- as.numeric(df$sex)
+df$smoker <- ifelse(df$smoker == "no", 0, ifelse(df$smoker == "yes", 1, df$smoker))
+df$smoker <- as.numeric(df$smoker)
+df$region <- factor(df$region, levels = c("northeast", "southeast", "southwest", "northwest"))
+df$region <- as.numeric(df$region)
+head(df)
+```
+
+```{r}
+is.null(df)
+```
+after changing all categorical data , there isn't NA value so we cant continue
+
+```{r}
+OTU <- as.matrix(charges)
+nspecies <- rowSums(OTU>0)
+
+X <- cbind(age,sex,bmi,children,smoker,region)
+Y <- log(nspecies)
+names <- c("age","sex","bmi","children","smoker","region","charges")
+```
+
+#Standardize Covariates
+```{r}
+X <- as.matrix(scale(X))
+```
+
+#JAGS format
+```{r}
+n <- length(Y)
+p <- ncol(X)
+data <- list(Y=Y,X=X,n=n,p=p)
+params <- c("beta")
+burn <- 10000
+n.iter <- 20000
+thin <- 10
+n.chains <- 2
+```
+
+#Fit the uninformative Gaussian model
+```{r}
+ model_string <- textConnection("model{
+   # Likelihood
+    for(i in 1:n){
+      Y[i] ~ dnorm(alpha+inprod(X[i,],beta[]),taue)
+    }
+   # Priors
+    for(j in 1:p){
+      beta[j] ~ dnorm(0,0.001)
+    }
+    alpha ~ dnorm(0,0.001)
+    taue  ~ dgamma(0.1, 0.1)
+ }")
+ model <- jags.model(model_string,data = data, n.chains=n.chains,quiet=TRUE)
+ update(model, burn, progress.bar="none")
+ samples <- coda.samples(model, variable.names=params, thin=thin, n.iter=n.iter)
+
+ par(mar=c(3, 3, 1, 1))
+ plot(samples)
+
+```
+## Estimate the effective size in MCMC sampling
+```{r}
+round(effectiveSize(samples),2)
+```
+From the estimate size above, we have high effective size which means our MCMC chain has less autocorrelation and is more efficient in exploring the target distribution
+
+```{r}
+summary(samples)
+```
+```{r}
+## Plot the prior and posterior for our model
+for(j in 1:p){
+  # Collect the MCMC iteration from six chains for the one prior
+  s1 <- c(samples[[1]][,j],samples[[2]][,j])
+  
+  # Get smooth density estimate for prior
+  d1 <- density(s1)
+  
+  # Plot the density estimates
+  mx <- max(c(d1$y))
+  plot(d1$x,d1$y,type="l",ylim=c(0,mx),xlab=expression(beta),ylab="Posterior",main=paste(names[j]),cex.main = 1.2)
+  abline(v=0)
+}
+```
+
+
